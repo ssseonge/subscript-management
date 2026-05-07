@@ -1093,13 +1093,13 @@ textarea:focus {
   }
 
   .subscription-card-main {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 7px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .subscription-amount {
-    text-align: left;
+    text-align: right;
   }
 
   .subscription-details {

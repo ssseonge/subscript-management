@@ -88,7 +88,6 @@ const demoSubscriptions = [
     category: "AI/업무",
     paymentMethod: "카드결제",
     status: "active",
-    notes: "업무 리서치와 웹앱 제작",
   },
   {
     id: "demo-capcut",
@@ -100,7 +99,6 @@ const demoSubscriptions = [
     category: "영상/편집",
     paymentMethod: "카드결제",
     status: "active",
-    notes: "숏폼 편집",
   },
   {
     id: "demo-vrew",
@@ -112,7 +110,6 @@ const demoSubscriptions = [
     category: "영상/편집",
     paymentMethod: "카드결제",
     status: "active",
-    notes: "브류 자막/영상 편집",
   },
 ];
 
@@ -135,7 +132,6 @@ const els = {
   category: document.querySelector("#category"),
   paymentMethod: document.querySelector("#paymentMethod"),
   status: document.querySelector("#status"),
-  notes: document.querySelector("#notes"),
   clearForm: document.querySelector("#clearForm"),
   openForm: document.querySelector("#openForm"),
   closeForm: document.querySelector("#closeForm"),
@@ -320,7 +316,6 @@ function handleSubmit(event) {
     category: normalizeCategory(els.category.value),
     paymentMethod: normalizePaymentMethod(els.paymentMethod.value),
     status: els.status.value,
-    notes: els.notes.value.trim(),
   };
 
   if (!data.name || !Number.isFinite(data.amount) || data.amount < 0 || !data.nextDate) {
@@ -390,7 +385,6 @@ function editSubscription(id) {
   els.category.value = item.category;
   els.paymentMethod.value = item.paymentMethod;
   els.status.value = item.status;
-  els.notes.value = item.notes;
   els.formTitle.textContent = "구독 수정";
   els.saveButton.textContent = "수정";
   openDialog();
@@ -890,7 +884,6 @@ function normalizeSubscription(item) {
     category: normalizeCategory(item.category),
     paymentMethod: normalizePaymentMethod(item.paymentMethod),
     status: statusLabels[item.status] ? item.status : "active",
-    notes: String(item.notes || "").trim(),
   };
 }
 
@@ -1095,8 +1088,7 @@ function dDayClass(days) {
 }
 
 function compactMeta(item) {
-  const meta = [item.paymentMethod, item.notes].filter(Boolean).join(" · ");
-  return meta || "결제수단 미지정";
+  return item.paymentMethod || "결제수단 미지정";
 }
 
 function createId() {
