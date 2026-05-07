@@ -717,6 +717,6 @@ function icon(name) {
 
 if ("serviceWorker" in navigator && location.protocol !== "file:" && location.port !== "5173") {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    navigator.serviceWorker.register("/service-worker.js").catch(() => {});
   });
 }

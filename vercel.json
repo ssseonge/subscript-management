@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/assets/index.html",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/assets/app.js",
+      "destination": "/app.js"
+    },
+    {
+      "source": "/assets/service-worker.js",
+      "destination": "/service-worker.js"
+    }
+  ]
+}
