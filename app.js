@@ -19,6 +19,7 @@ const cycleMonths = {
 };
 
 const currencyOrder = ["KRW", "JPY", "USD", "EUR"];
+const defaultServiceNames = ["ChatGPT", "CapCut", "Vrew"];
 const defaultPaymentMethods = ["카드결제", "앱스토어", "휴대폰"];
 const defaultCategories = ["AI/업무", "영상/편집", "영상/음악", "디자인", "쇼핑", "서버/도메인", "생활", "기타"];
 const statusLabels = {
@@ -155,6 +156,9 @@ const els = {
   auditProgress: document.querySelector("#auditProgress"),
   notificationToggle: document.querySelector("#notificationToggle"),
   notificationStatus: document.querySelector("#notificationStatus"),
+  serviceNameForm: document.querySelector("#serviceNameForm"),
+  serviceNameInput: document.querySelector("#serviceNameInput"),
+  serviceNameList: document.querySelector("#serviceNameList"),
   paymentMethodForm: document.querySelector("#paymentMethodForm"),
   paymentMethodInput: document.querySelector("#paymentMethodInput"),
   paymentMethodList: document.querySelector("#paymentMethodList"),
@@ -204,8 +208,10 @@ function bindEvents() {
   els.formDialog.addEventListener("cancel", () => resetForm());
   els.settingsDialog.addEventListener("cancel", closeSettingsDialog);
   els.notificationToggle.addEventListener("change", handleNotificationToggle);
+  els.serviceNameForm.addEventListener("submit", (event) => handleSettingAdd(event, "serviceNames"));
   els.paymentMethodForm.addEventListener("submit", (event) => handleSettingAdd(event, "paymentMethods"));
   els.categoryForm.addEventListener("submit", (event) => handleSettingAdd(event, "categories"));
+  els.serviceNameList.addEventListener("click", (event) => handleSettingDelete(event, "serviceNames"));
   els.paymentMethodList.addEventListener("click", (event) => handleSettingDelete(event, "paymentMethods"));
   els.categoryList.addEventListener("click", (event) => handleSettingDelete(event, "categories"));
   document.querySelectorAll("[data-theme-value]").forEach((button) => {
@@ -311,11 +317,12 @@ function foldTiming() {
 function handleSubmit(event) {
   event.preventDefault();
 
+  const serviceName = els.serviceName.value.trim() || settings.serviceNames[0] || "ChatGPT";
   const category = els.category.value.trim() || settings.categories[0] || "기타";
   const paymentMethod = els.paymentMethod.value.trim() || settings.paymentMethods[0] || "카드결제";
   const data = {
     id: els.editingId.value || createId(),
-    name: els.serviceName.value.trim(),
+    name: serviceName,
     amount: Number(els.amount.value),
     currency: els.currency.value,
     cycle: els.cycle.value,
@@ -373,9 +380,6 @@ function openDialog(dialog = els.formDialog) {
     dialog.classList.add("open");
   }
 
-  if (dialog === els.formDialog) {
-    window.setTimeout(() => els.serviceName.focus(), 40);
-  }
 }
 
 function editSubscription(id) {
@@ -388,7 +392,8 @@ function editSubscription(id) {
   els.currency.value = item.currency;
   els.cycle.value = item.cycle;
   els.nextDate.value = item.nextDate;
-  renderFormOptions(item.category, item.paymentMethod);
+  renderFormOptions(item.name, item.category, item.paymentMethod);
+  els.serviceName.value = item.name;
   els.category.value = item.category;
   els.paymentMethod.value = item.paymentMethod;
   els.status.value = item.status;
@@ -431,7 +436,7 @@ function resetForm() {
 }
 
 function render() {
-  renderFormOptions(els.category.value, els.paymentMethod.value);
+  renderFormOptions(els.serviceName.value, els.category.value, els.paymentMethod.value);
   renderSummary();
   renderSubscriptionCards();
   renderUpcoming();
@@ -580,9 +585,11 @@ function renderAuditChecklist() {
   els.auditList.append(fragment);
 }
 
-function renderFormOptions(selectedCategory = "", selectedPaymentMethod = "") {
+function renderFormOptions(selectedServiceName = "", selectedCategory = "", selectedPaymentMethod = "") {
+  const serviceName = selectedServiceName.trim() || settings.serviceNames[0] || "ChatGPT";
   const category = selectedCategory.trim() || settings.categories[0] || "기타";
   const paymentMethod = selectedPaymentMethod.trim() || settings.paymentMethods[0] || "카드결제";
+  renderSelectOptions(els.serviceName, withSelectedValue(settings.serviceNames, serviceName), serviceName);
   renderSelectOptions(els.category, withSelectedValue(settings.categories, category), category);
   renderSelectOptions(els.paymentMethod, withSelectedValue(settings.paymentMethods, paymentMethod), paymentMethod);
 }
@@ -606,7 +613,8 @@ function withSelectedValue(values, selectedValue) {
 }
 
 function renderSettings() {
-  renderFormOptions(els.category.value, els.paymentMethod.value);
+  renderFormOptions(els.serviceName.value, els.category.value, els.paymentMethod.value);
+  renderSettingList(els.serviceNameList, settings.serviceNames, "serviceNames");
   renderSettingList(els.paymentMethodList, settings.paymentMethods, "paymentMethods");
   renderSettingList(els.categoryList, settings.categories, "categories");
   els.notificationToggle.checked = settings.notificationsEnabled;
@@ -634,7 +642,7 @@ function renderSettingList(container, values, type) {
 
 function handleSettingAdd(event, type) {
   event.preventDefault();
-  const input = type === "paymentMethods" ? els.paymentMethodInput : els.categoryInput;
+  const input = settingInput(type);
   const value = input.value.trim();
   if (!value) return;
 
@@ -648,6 +656,12 @@ function handleSettingAdd(event, type) {
   saveSettings();
   renderSettings();
   showToast("설정에 추가했어");
+}
+
+function settingInput(type) {
+  if (type === "serviceNames") return els.serviceNameInput;
+  if (type === "paymentMethods") return els.paymentMethodInput;
+  return els.categoryInput;
 }
 
 function handleSettingDelete(event, type) {
@@ -814,9 +828,11 @@ function sortedSubscriptions() {
 function loadSettings() {
   try {
     const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    const serviceNames = cleanList(stored.serviceNames, defaultServiceNames);
     const paymentMethods = cleanList(stored.paymentMethods, defaultPaymentMethods);
     const categories = cleanList(stored.categories, defaultCategories);
     return {
+      serviceNames,
       paymentMethods,
       categories,
       notificationsEnabled: Boolean(stored.notificationsEnabled),
@@ -824,6 +840,7 @@ function loadSettings() {
     };
   } catch {
     return {
+      serviceNames: [...defaultServiceNames],
       paymentMethods: [...defaultPaymentMethods],
       categories: [...defaultCategories],
       notificationsEnabled: false,
@@ -931,6 +948,7 @@ async function loadRemoteState() {
 function normalizeRemoteSettings(remoteSettings) {
   if (!remoteSettings || typeof remoteSettings !== "object") return null;
   return {
+    serviceNames: cleanList(remoteSettings.serviceNames, settings.serviceNames),
     paymentMethods: cleanList(remoteSettings.paymentMethods, settings.paymentMethods),
     categories: cleanList(remoteSettings.categories, settings.categories),
     notificationsEnabled: Boolean(remoteSettings.notificationsEnabled),
@@ -980,6 +998,7 @@ function toRemoteSubscription(item) {
 
 function toRemoteSettings(currentSettings) {
   return {
+    serviceNames: cleanList(currentSettings.serviceNames, defaultServiceNames),
     paymentMethods: cleanList(currentSettings.paymentMethods, defaultPaymentMethods),
     categories: cleanList(currentSettings.categories, defaultCategories),
     notificationsEnabled: Boolean(currentSettings.notificationsEnabled),

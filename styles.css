@@ -295,6 +295,8 @@ textarea {
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
+  font-size: 16px;
+  line-height: 1.2;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -307,6 +309,23 @@ select {
 textarea {
   resize: vertical;
   padding: 11px 12px;
+}
+
+input[type="date"] {
+  height: 42px;
+  max-width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  line-height: 42px;
+}
+
+input[type="date"]::-webkit-date-and-time-value {
+  min-height: 42px;
+  text-align: left;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  margin: 0;
 }
 
 input:focus,

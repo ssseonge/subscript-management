@@ -72,6 +72,7 @@ function toDbSubscription(item) {
 function toClientSettings(row) {
   if (!row) return null;
   return {
+    serviceNames: Array.isArray(row.service_names) ? row.service_names : [],
     paymentMethods: Array.isArray(row.payment_methods) ? row.payment_methods : [],
     categories: Array.isArray(row.categories) ? row.categories : [],
     notificationsEnabled: Boolean(row.notifications_enabled),
@@ -82,6 +83,7 @@ function toClientSettings(row) {
 function toDbSettings(settings = {}) {
   return {
     owner_id: OWNER_ID,
+    service_names: Array.isArray(settings.serviceNames) ? settings.serviceNames : ["ChatGPT", "CapCut", "Vrew"],
     payment_methods: Array.isArray(settings.paymentMethods) ? settings.paymentMethods : ["카드결제", "앱스토어", "휴대폰"],
     categories: Array.isArray(settings.categories) ? settings.categories : ["AI/업무", "영상/편집", "기타"],
     notifications_enabled: Boolean(settings.notificationsEnabled),

@@ -17,6 +17,7 @@ create table if not exists public.subscription_services (
 
 create table if not exists public.subscription_app_settings (
   owner_id text primary key default 'default',
+  service_names jsonb not null default '["ChatGPT", "CapCut", "Vrew"]'::jsonb,
   payment_methods jsonb not null default '["카드결제", "앱스토어", "휴대폰"]'::jsonb,
   categories jsonb not null default '["AI/업무", "영상/편집", "영상/음악", "디자인", "쇼핑", "서버/도메인", "생활", "기타"]'::jsonb,
   notifications_enabled boolean not null default false,
@@ -24,6 +25,9 @@ create table if not exists public.subscription_app_settings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.subscription_app_settings
+  add column if not exists service_names jsonb not null default '["ChatGPT", "CapCut", "Vrew"]'::jsonb;
 
 create index if not exists subscription_services_owner_next_date_idx
   on public.subscription_services (owner_id, next_date);

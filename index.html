@@ -118,7 +118,7 @@
 
           <label>
             <span>서비스명</span>
-            <input id="serviceName" name="serviceName" type="text" placeholder="ChatGPT" required />
+            <select id="serviceName" name="serviceName" required></select>
           </label>
 
           <div class="form-row">
@@ -212,6 +212,15 @@
               <button type="button" data-theme-value="light">라이트</button>
               <button type="button" data-theme-value="dark">다크</button>
             </div>
+          </section>
+
+          <section class="settings-section">
+            <h3>서비스명</h3>
+            <form class="settings-add" id="serviceNameForm">
+              <input id="serviceNameInput" type="text" placeholder="예: ChatGPT" />
+              <button class="primary-button compact" type="submit">추가</button>
+            </form>
+            <div class="settings-list" id="serviceNameList"></div>
           </section>
 
           <section class="settings-section">
