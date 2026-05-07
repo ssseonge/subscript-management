@@ -2,6 +2,7 @@ const STORAGE_KEY = "insung-subscription-ledger-v1";
 const AUDIT_KEY = "insung-subscription-audit-v1";
 const SETTINGS_KEY = "insung-subscription-settings-v1";
 const NOTIFIED_KEY = "insung-subscription-notified-v1";
+const REMOTE_STATE_URL = "/api/state";
 
 const cycleLabels = {
   weekly: "매주",
@@ -118,6 +119,9 @@ let subscriptions = loadSubscriptions();
 let auditState = loadAuditState();
 let notifiedState = loadNotifiedState();
 let notificationTimers = [];
+let remoteReady = false;
+let remoteSaveTimer = null;
+let remoteLoadPromise = null;
 
 const els = {
   form: document.querySelector("#subscriptionForm"),
@@ -166,8 +170,8 @@ function init() {
   applyTheme(settings.theme);
 
   if (!localStorage.getItem(STORAGE_KEY)) {
-    subscriptions = demoSubscriptions.map((item) => ({ ...item }));
-    saveSubscriptions();
+    subscriptions = [];
+    saveSubscriptions({ remote: false });
   }
 
   els.nextDate.value = toISODate(new Date());
@@ -176,6 +180,7 @@ function init() {
   render();
   updateNotificationStatus();
   schedulePaymentNotifications();
+  remoteLoadPromise = loadRemoteState();
 }
 
 function bindEvents() {
@@ -306,6 +311,8 @@ function foldTiming() {
 function handleSubmit(event) {
   event.preventDefault();
 
+  const category = els.category.value.trim() || settings.categories[0] || "기타";
+  const paymentMethod = els.paymentMethod.value.trim() || settings.paymentMethods[0] || "카드결제";
   const data = {
     id: els.editingId.value || createId(),
     name: els.serviceName.value.trim(),
@@ -313,8 +320,8 @@ function handleSubmit(event) {
     currency: els.currency.value,
     cycle: els.cycle.value,
     nextDate: els.nextDate.value,
-    category: normalizeCategory(els.category.value),
-    paymentMethod: normalizePaymentMethod(els.paymentMethod.value),
+    category,
+    paymentMethod,
     status: els.status.value,
   };
 
@@ -574,8 +581,10 @@ function renderAuditChecklist() {
 }
 
 function renderFormOptions(selectedCategory = "", selectedPaymentMethod = "") {
-  renderSelectOptions(els.category, settings.categories, normalizeCategory(selectedCategory));
-  renderSelectOptions(els.paymentMethod, settings.paymentMethods, normalizePaymentMethod(selectedPaymentMethod));
+  const category = selectedCategory.trim() || settings.categories[0] || "기타";
+  const paymentMethod = selectedPaymentMethod.trim() || settings.paymentMethods[0] || "카드결제";
+  renderSelectOptions(els.category, withSelectedValue(settings.categories, category), category);
+  renderSelectOptions(els.paymentMethod, withSelectedValue(settings.paymentMethods, paymentMethod), paymentMethod);
 }
 
 function renderSelectOptions(select, values, selectedValue) {
@@ -587,6 +596,13 @@ function renderSelectOptions(select, values, selectedValue) {
     select.append(option);
   });
   select.value = values.includes(selectedValue) ? selectedValue : values[0] || "";
+}
+
+function withSelectedValue(values, selectedValue) {
+  const cleaned = cleanList(values, []);
+  const selected = String(selectedValue || "").trim();
+  if (selected && !cleaned.includes(selected)) return [selected, ...cleaned];
+  return cleaned;
 }
 
 function renderSettings() {
@@ -649,7 +665,6 @@ function handleSettingDelete(event, type) {
 
   settings[type] = settings[type].filter((item) => item !== value);
   saveSettings();
-  normalizeSavedSubscriptions();
   renderSettings();
   render();
   showToast("설정에서 삭제했어");
@@ -817,8 +832,9 @@ function loadSettings() {
   }
 }
 
-function saveSettings() {
+function saveSettings(options = {}) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  if (options.remote !== false) queueRemoteSave();
 }
 
 function cleanList(values, fallback) {
@@ -837,8 +853,9 @@ function loadSubscriptions() {
   }
 }
 
-function saveSubscriptions() {
+function saveSubscriptions(options = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(subscriptions));
+  if (options.remote !== false) queueRemoteSave();
 }
 
 function loadAuditState() {
@@ -867,9 +884,107 @@ function saveNotifiedState() {
   localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notifiedState));
 }
 
-function normalizeSavedSubscriptions() {
-  subscriptions = subscriptions.map(normalizeSubscription).filter(Boolean);
-  saveSubscriptions();
+async function loadRemoteState() {
+  if (location.protocol === "file:") return;
+
+  try {
+    const response = await fetch(REMOTE_STATE_URL, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`Remote load failed: ${response.status}`);
+
+    const remoteState = await response.json();
+    const remoteSubscriptions = Array.isArray(remoteState.subscriptions) ? remoteState.subscriptions.map(normalizeSubscription).filter(Boolean) : [];
+    const remoteSettings = normalizeRemoteSettings(remoteState.settings);
+
+    remoteReady = true;
+
+    if (remoteSettings) {
+      settings = remoteSettings;
+      saveSettings({ remote: false });
+      applyTheme(settings.theme);
+    }
+
+    if (remoteSubscriptions.length) {
+      subscriptions = remoteSubscriptions;
+      saveSubscriptions({ remote: false });
+      renderSettings();
+      render();
+      showToast("DB에서 불러왔어");
+      return;
+    }
+
+    renderSettings();
+    render();
+
+    if (subscriptions.length) {
+      await saveRemoteState();
+      showToast("현재 데이터를 DB에 저장했어");
+    } else {
+      await saveRemoteState();
+      showToast("DB 연결됐어");
+    }
+  } catch {
+    remoteReady = false;
+    showToast("DB 연결을 확인해야 해");
+  }
+}
+
+function normalizeRemoteSettings(remoteSettings) {
+  if (!remoteSettings || typeof remoteSettings !== "object") return null;
+  return {
+    paymentMethods: cleanList(remoteSettings.paymentMethods, settings.paymentMethods),
+    categories: cleanList(remoteSettings.categories, settings.categories),
+    notificationsEnabled: Boolean(remoteSettings.notificationsEnabled),
+    theme: remoteSettings.theme === "dark" ? "dark" : "light",
+  };
+}
+
+function queueRemoteSave() {
+  if (!remoteReady || location.protocol === "file:") return;
+  window.clearTimeout(remoteSaveTimer);
+  remoteSaveTimer = window.setTimeout(() => {
+    saveRemoteState().catch(() => showToast("DB 저장을 확인해야 해"));
+  }, 400);
+}
+
+async function saveRemoteState() {
+  if (location.protocol === "file:") return;
+
+  const response = await fetch(REMOTE_STATE_URL, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      subscriptions: subscriptions.map(toRemoteSubscription),
+      settings: toRemoteSettings(settings),
+    }),
+  });
+
+  if (!response.ok) throw new Error(`Remote save failed: ${response.status}`);
+}
+
+function toRemoteSubscription(item) {
+  return {
+    id: String(item.id || createId()),
+    name: String(item.name || "").trim(),
+    amount: Number(item.amount) || 0,
+    currency: item.currency,
+    cycle: item.cycle,
+    nextDate: item.nextDate,
+    category: String(item.category || "").trim(),
+    paymentMethod: String(item.paymentMethod || "").trim(),
+    status: item.status,
+  };
+}
+
+function toRemoteSettings(currentSettings) {
+  return {
+    paymentMethods: cleanList(currentSettings.paymentMethods, defaultPaymentMethods),
+    categories: cleanList(currentSettings.categories, defaultCategories),
+    notificationsEnabled: Boolean(currentSettings.notificationsEnabled),
+    theme: currentSettings.theme === "dark" ? "dark" : "light",
+  };
 }
 
 function normalizeSubscription(item) {
@@ -889,18 +1004,12 @@ function normalizeSubscription(item) {
 
 function normalizePaymentMethod(value) {
   const method = String(value || "").trim();
-  const methods = settings?.paymentMethods?.length ? settings.paymentMethods : defaultPaymentMethods;
-  if (methods.includes(method)) return method;
-  if (method.includes("앱스토어") || method.includes("App Store")) return "앱스토어";
-  if (method.includes("휴대폰") || method.includes("통신")) return "휴대폰";
-  return methods[0] || "카드결제";
+  return method || "카드결제";
 }
 
 function normalizeCategory(value) {
   const category = String(value || "").trim();
-  const categories = settings?.categories?.length ? settings.categories : defaultCategories;
-  if (categories.includes(category)) return category;
-  return categories[0] || "기타";
+  return category || "기타";
 }
 
 function exportData() {
