@@ -1,4 +1,4 @@
-const CACHE_NAME = "subscription-ledger-v2";
+const CACHE_NAME = "subscription-ledger-v3";
 const ASSETS = ["/", "/index.html", "/app.js", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -27,5 +27,19 @@ self.addEventListener("fetch", (event) => {
       if (response.ok) cache.put(event.request, response.clone());
       return response;
     })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        const client = clients.find((item) => "focus" in item);
+        if (client) return client.focus();
+        if (self.clients.openWindow) return self.clients.openWindow("/");
+        return undefined;
+      })
   );
 });

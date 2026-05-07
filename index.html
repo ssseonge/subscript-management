@@ -19,6 +19,12 @@
           <p class="eyebrow">Subscription Ledger</p>
           <h1>구독 결제 관리</h1>
         </div>
+        <button class="icon-button" type="button" id="openSettings" title="설정" aria-label="설정">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.5 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.2-.5H3a2 2 0 1 1 0-4h-.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .5-1.2V3a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.3.38.7.6 1.2.6h.4a2 2 0 1 1 0 4h-.4a1.7 1.7 0 0 0-1.2.5 1.7 1.7 0 0 0-.6 1Z" />
+          </svg>
+        </button>
       </header>
 
       <section class="summary-grid" aria-label="요약">
@@ -44,11 +50,11 @@
         <summary class="fold-summary due-summary">
           <span>
             <strong id="timelineTitle">다가오는 결제</strong>
-            <small>30일 안에 결제될 활성 구독</small>
+            <small>7일 안에 결제될 활성 구독</small>
           </span>
           <span class="fold-meta">
             <b id="upcomingCount">0건</b>
-            <small id="timelineRange">30일</small>
+            <small id="timelineRange">7일</small>
           </span>
         </summary>
         <ol id="upcomingList"></ol>
@@ -149,26 +155,12 @@
 
           <label>
             <span>카테고리</span>
-            <input id="category" name="category" type="text" list="categoryOptions" placeholder="AI/업무" />
-            <datalist id="categoryOptions">
-              <option value="AI/업무"></option>
-              <option value="영상/편집"></option>
-              <option value="영상/음악"></option>
-              <option value="디자인"></option>
-              <option value="쇼핑"></option>
-              <option value="서버/도메인"></option>
-              <option value="생활"></option>
-              <option value="기타"></option>
-            </datalist>
+            <select id="category" name="category"></select>
           </label>
 
           <label>
             <span>결제수단</span>
-            <select id="paymentMethod" name="paymentMethod">
-              <option value="카드결제">카드결제</option>
-              <option value="앱스토어">앱스토어</option>
-              <option value="휴대폰">휴대폰</option>
-            </select>
+            <select id="paymentMethod" name="paymentMethod"></select>
           </label>
 
           <label>
@@ -176,6 +168,7 @@
             <select id="status" name="status">
               <option value="active">활성</option>
               <option value="paused">보류</option>
+              <option value="canceled">구독해지</option>
             </select>
           </label>
 
@@ -189,6 +182,61 @@
             <button class="ghost-button" type="button" id="clearForm">닫기</button>
           </div>
         </form>
+      </section>
+    </dialog>
+
+    <dialog class="form-dialog" id="settingsDialog">
+      <section class="entry-panel dialog-card" aria-labelledby="settingsTitle">
+        <div class="panel-heading dialog-heading">
+          <div>
+            <p class="eyebrow">Settings</p>
+            <h2 id="settingsTitle">설정</h2>
+          </div>
+          <button class="icon-button mini" type="button" id="closeSettings" title="닫기" aria-label="닫기">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="settings-stack">
+          <section class="settings-section">
+            <h3>알림</h3>
+            <label class="switch-row">
+              <span>
+                <strong>푸시알림</strong>
+                <small id="notificationStatus">권한 확인 전</small>
+              </span>
+              <input id="notificationToggle" type="checkbox" />
+            </label>
+          </section>
+
+          <section class="settings-section">
+            <h3>테마</h3>
+            <div class="segmented-control" role="group" aria-label="테마">
+              <button type="button" data-theme-value="light">라이트</button>
+              <button type="button" data-theme-value="dark">다크</button>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3>결제수단</h3>
+            <form class="settings-add" id="paymentMethodForm">
+              <input id="paymentMethodInput" type="text" placeholder="예: 페이팔" />
+              <button class="primary-button compact" type="submit">추가</button>
+            </form>
+            <div class="settings-list" id="paymentMethodList"></div>
+          </section>
+
+          <section class="settings-section">
+            <h3>카테고리</h3>
+            <form class="settings-add" id="categoryForm">
+              <input id="categoryInput" type="text" placeholder="예: 일본업무" />
+              <button class="primary-button compact" type="submit">추가</button>
+            </form>
+            <div class="settings-list" id="categoryList"></div>
+          </section>
+        </div>
       </section>
     </dialog>
 

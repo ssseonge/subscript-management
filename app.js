@@ -1,5 +1,7 @@
 const STORAGE_KEY = "insung-subscription-ledger-v1";
 const AUDIT_KEY = "insung-subscription-audit-v1";
+const SETTINGS_KEY = "insung-subscription-settings-v1";
+const NOTIFIED_KEY = "insung-subscription-notified-v1";
 
 const cycleLabels = {
   weekly: "매주",
@@ -16,7 +18,13 @@ const cycleMonths = {
 };
 
 const currencyOrder = ["KRW", "JPY", "USD", "EUR"];
-const paymentMethods = ["카드결제", "앱스토어", "휴대폰"];
+const defaultPaymentMethods = ["카드결제", "앱스토어", "휴대폰"];
+const defaultCategories = ["AI/업무", "영상/편집", "영상/음악", "디자인", "쇼핑", "서버/도메인", "생활", "기타"];
+const statusLabels = {
+  active: "활성",
+  paused: "보류",
+  canceled: "구독해지",
+};
 
 const auditSources = [
   {
@@ -108,8 +116,11 @@ const demoSubscriptions = [
   },
 ];
 
+let settings = loadSettings();
 let subscriptions = loadSubscriptions();
 let auditState = loadAuditState();
+let notifiedState = loadNotifiedState();
+let notificationTimers = [];
 
 const els = {
   form: document.querySelector("#subscriptionForm"),
@@ -128,7 +139,10 @@ const els = {
   clearForm: document.querySelector("#clearForm"),
   openForm: document.querySelector("#openForm"),
   closeForm: document.querySelector("#closeForm"),
+  openSettings: document.querySelector("#openSettings"),
+  closeSettings: document.querySelector("#closeSettings"),
   formDialog: document.querySelector("#formDialog"),
+  settingsDialog: document.querySelector("#settingsDialog"),
   subscriptionList: document.querySelector("#subscriptionList"),
   emptyState: document.querySelector("#emptyState"),
   monthlyTotal: document.querySelector("#monthlyTotal"),
@@ -139,12 +153,22 @@ const els = {
   upcomingCount: document.querySelector("#upcomingCount"),
   auditList: document.querySelector("#auditList"),
   auditProgress: document.querySelector("#auditProgress"),
+  notificationToggle: document.querySelector("#notificationToggle"),
+  notificationStatus: document.querySelector("#notificationStatus"),
+  paymentMethodForm: document.querySelector("#paymentMethodForm"),
+  paymentMethodInput: document.querySelector("#paymentMethodInput"),
+  paymentMethodList: document.querySelector("#paymentMethodList"),
+  categoryForm: document.querySelector("#categoryForm"),
+  categoryInput: document.querySelector("#categoryInput"),
+  categoryList: document.querySelector("#categoryList"),
   toast: document.querySelector("#toast"),
 };
 
 init();
 
 function init() {
+  applyTheme(settings.theme);
+
   if (!localStorage.getItem(STORAGE_KEY)) {
     subscriptions = demoSubscriptions.map((item) => ({ ...item }));
     saveSubscriptions();
@@ -152,7 +176,10 @@ function init() {
 
   els.nextDate.value = toISODate(new Date());
   bindEvents();
+  renderSettings();
   render();
+  updateNotificationStatus();
+  schedulePaymentNotifications();
 }
 
 function bindEvents() {
@@ -165,10 +192,27 @@ function bindEvents() {
   });
   els.closeForm.addEventListener("click", closeSubscriptionForm);
   els.clearForm.addEventListener("click", closeSubscriptionForm);
+  els.openSettings.addEventListener("click", openSettingsDialog);
+  els.closeSettings.addEventListener("click", closeSettingsDialog);
   els.formDialog.addEventListener("click", (event) => {
     if (event.target === els.formDialog) closeSubscriptionForm();
   });
+  els.settingsDialog.addEventListener("click", (event) => {
+    if (event.target === els.settingsDialog) closeSettingsDialog();
+  });
   els.formDialog.addEventListener("cancel", () => resetForm());
+  els.settingsDialog.addEventListener("cancel", closeSettingsDialog);
+  els.notificationToggle.addEventListener("change", handleNotificationToggle);
+  els.paymentMethodForm.addEventListener("submit", (event) => handleSettingAdd(event, "paymentMethods"));
+  els.categoryForm.addEventListener("submit", (event) => handleSettingAdd(event, "categories"));
+  els.paymentMethodList.addEventListener("click", (event) => handleSettingDelete(event, "paymentMethods"));
+  els.categoryList.addEventListener("click", (event) => handleSettingDelete(event, "categories"));
+  document.querySelectorAll("[data-theme-value]").forEach((button) => {
+    button.addEventListener("click", () => updateTheme(button.dataset.themeValue));
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) schedulePaymentNotifications();
+  });
   els.auditList.addEventListener("click", handleAuditClick);
 
   els.subscriptionList.addEventListener("click", (event) => {
@@ -273,7 +317,7 @@ function handleSubmit(event) {
     currency: els.currency.value,
     cycle: els.cycle.value,
     nextDate: els.nextDate.value,
-    category: els.category.value.trim() || "기타",
+    category: normalizeCategory(els.category.value),
     paymentMethod: normalizePaymentMethod(els.paymentMethod.value),
     status: els.status.value,
     notes: els.notes.value.trim(),
@@ -309,14 +353,27 @@ function closeSubscriptionForm() {
   resetForm();
 }
 
-function openDialog() {
-  if (typeof els.formDialog.showModal === "function") {
-    els.formDialog.showModal();
+function openSettingsDialog() {
+  renderSettings();
+  openDialog(els.settingsDialog);
+}
+
+function closeSettingsDialog() {
+  if (els.settingsDialog.open) els.settingsDialog.close();
+  els.settingsDialog.classList.remove("open");
+}
+
+function openDialog(dialog = els.formDialog) {
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
   } else {
-    els.formDialog.setAttribute("open", "");
-    els.formDialog.classList.add("open");
+    dialog.setAttribute("open", "");
+    dialog.classList.add("open");
   }
-  window.setTimeout(() => els.serviceName.focus(), 40);
+
+  if (dialog === els.formDialog) {
+    window.setTimeout(() => els.serviceName.focus(), 40);
+  }
 }
 
 function editSubscription(id) {
@@ -329,6 +386,7 @@ function editSubscription(id) {
   els.currency.value = item.currency;
   els.cycle.value = item.cycle;
   els.nextDate.value = item.nextDate;
+  renderFormOptions(item.category, item.paymentMethod);
   els.category.value = item.category;
   els.paymentMethod.value = item.paymentMethod;
   els.status.value = item.status;
@@ -366,15 +424,18 @@ function resetForm() {
   els.form.reset();
   els.editingId.value = "";
   els.nextDate.value = toISODate(new Date());
+  renderFormOptions();
   els.formTitle.textContent = "구독 등록";
   els.saveButton.textContent = "저장";
 }
 
 function render() {
+  renderFormOptions(els.category.value, els.paymentMethod.value);
   renderSummary();
   renderSubscriptionCards();
   renderUpcoming();
   renderAuditChecklist();
+  schedulePaymentNotifications();
 }
 
 function renderSummary() {
@@ -408,8 +469,8 @@ function renderSubscriptionCards() {
       <div class="subscription-card-top">
         <span class="category-chip" title="${escapeHtml(item.category)}">${escapeHtml(item.category || "기타")}</span>
         <span class="card-badges">
-          <span class="status-badge ${item.status}">${item.status === "active" ? "활성" : "보류"}</span>
-          <span class="${dDayClass(dday)}">${dDayLabel(dday)}</span>
+          <span class="status-badge ${item.status}">${statusLabels[item.status] || "활성"}</span>
+          ${item.status === "active" ? `<span class="${dDayClass(dday)}">${dDayLabel(dday)}</span>` : ""}
         </span>
       </div>
       <div class="subscription-card-main">
@@ -456,7 +517,7 @@ function renderUpcoming() {
     .map((item) => ({ item, nextDue: getNextDueDate(item) }))
     .filter(({ nextDue }) => {
       const days = daysUntil(nextDue);
-      return days >= 0 && days <= 30;
+      return days >= 0 && days <= 7;
     })
     .sort((a, b) => a.nextDue - b.nextDue);
 
@@ -467,7 +528,7 @@ function renderUpcoming() {
     const empty = document.createElement("li");
     empty.innerHTML = `
       <div class="timeline-date">없음</div>
-      <div class="timeline-service"><strong>30일 내 결제 없음</strong><span>활성 구독 기준</span></div>
+      <div class="timeline-service"><strong>7일 내 결제 없음</strong><span>활성 구독 기준</span></div>
       <div class="timeline-amount">-</div>
     `;
     els.upcomingList.append(empty);
@@ -518,6 +579,206 @@ function renderAuditChecklist() {
   els.auditList.append(fragment);
 }
 
+function renderFormOptions(selectedCategory = "", selectedPaymentMethod = "") {
+  renderSelectOptions(els.category, settings.categories, normalizeCategory(selectedCategory));
+  renderSelectOptions(els.paymentMethod, settings.paymentMethods, normalizePaymentMethod(selectedPaymentMethod));
+}
+
+function renderSelectOptions(select, values, selectedValue) {
+  select.innerHTML = "";
+  values.forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.append(option);
+  });
+  select.value = values.includes(selectedValue) ? selectedValue : values[0] || "";
+}
+
+function renderSettings() {
+  renderFormOptions(els.category.value, els.paymentMethod.value);
+  renderSettingList(els.paymentMethodList, settings.paymentMethods, "paymentMethods");
+  renderSettingList(els.categoryList, settings.categories, "categories");
+  els.notificationToggle.checked = settings.notificationsEnabled;
+  updateNotificationStatus();
+
+  document.querySelectorAll("[data-theme-value]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.themeValue === settings.theme);
+  });
+}
+
+function renderSettingList(container, values, type) {
+  container.innerHTML = "";
+  values.forEach((value) => {
+    const row = document.createElement("article");
+    row.className = "settings-row";
+    row.innerHTML = `
+      <span>${escapeHtml(value)}</span>
+      <button class="icon-button mini" type="button" data-setting-type="${type}" data-setting-value="${escapeHtml(value)}" title="삭제" aria-label="삭제">
+        ${icon("trash")}
+      </button>
+    `;
+    container.append(row);
+  });
+}
+
+function handleSettingAdd(event, type) {
+  event.preventDefault();
+  const input = type === "paymentMethods" ? els.paymentMethodInput : els.categoryInput;
+  const value = input.value.trim();
+  if (!value) return;
+
+  if (settings[type].includes(value)) {
+    showToast("이미 등록되어 있어");
+    return;
+  }
+
+  settings[type].push(value);
+  input.value = "";
+  saveSettings();
+  renderSettings();
+  showToast("설정에 추가했어");
+}
+
+function handleSettingDelete(event, type) {
+  const button = event.target.closest("button[data-setting-value]");
+  if (!button || button.dataset.settingType !== type) return;
+
+  if (settings[type].length <= 1) {
+    showToast("하나는 남겨둬야 해");
+    return;
+  }
+
+  const value = button.dataset.settingValue;
+  const ok = window.confirm(`${value} 항목을 삭제할까?`);
+  if (!ok) return;
+
+  settings[type] = settings[type].filter((item) => item !== value);
+  saveSettings();
+  normalizeSavedSubscriptions();
+  renderSettings();
+  render();
+  showToast("설정에서 삭제했어");
+}
+
+async function handleNotificationToggle() {
+  if (!els.notificationToggle.checked) {
+    settings.notificationsEnabled = false;
+    saveSettings();
+    clearNotificationTimers();
+    updateNotificationStatus();
+    showToast("푸시알림을 껐어");
+    return;
+  }
+
+  if (!("Notification" in window)) {
+    els.notificationToggle.checked = false;
+    settings.notificationsEnabled = false;
+    saveSettings();
+    updateNotificationStatus("이 브라우저는 알림을 지원하지 않아");
+    return;
+  }
+
+  const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+  settings.notificationsEnabled = permission === "granted";
+  els.notificationToggle.checked = settings.notificationsEnabled;
+  saveSettings();
+  updateNotificationStatus();
+
+  if (settings.notificationsEnabled) {
+    schedulePaymentNotifications();
+    showToast("결제 하루 전 알림을 켰어");
+  } else {
+    showToast("알림 권한이 허용되지 않았어");
+  }
+}
+
+function updateTheme(theme) {
+  settings.theme = theme === "dark" ? "dark" : "light";
+  saveSettings();
+  applyTheme(settings.theme);
+  renderSettings();
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
+}
+
+function updateNotificationStatus(message = "") {
+  if (!els.notificationStatus) return;
+  if (!("Notification" in window)) {
+    els.notificationStatus.textContent = message || "지원 안 됨";
+    return;
+  }
+
+  const status = {
+    granted: "허용됨",
+    denied: "차단됨",
+    default: "권한 필요",
+  };
+  els.notificationStatus.textContent = message || status[Notification.permission] || "권한 필요";
+}
+
+function schedulePaymentNotifications() {
+  clearNotificationTimers();
+  if (!settings.notificationsEnabled || !("Notification" in window) || Notification.permission !== "granted") return;
+
+  const now = new Date();
+  subscriptions
+    .filter((item) => item.status === "active")
+    .forEach((item) => {
+      const nextDue = getNextDueDate(item);
+      const notifyAt = getNotificationDate(nextDue);
+      const delay = notifyAt - now;
+
+      if (delay <= 0 && daysUntil(nextDue) === 1) {
+        showPaymentNotification(item, nextDue);
+        return;
+      }
+
+      if (delay > 0 && delay <= 2147483647) {
+        notificationTimers.push(window.setTimeout(() => showPaymentNotification(item, nextDue), delay));
+      }
+    });
+}
+
+function clearNotificationTimers() {
+  notificationTimers.forEach((timer) => window.clearTimeout(timer));
+  notificationTimers = [];
+}
+
+function getNotificationDate(nextDue) {
+  const notificationDate = addDays(startOfDay(nextDue), -1);
+  notificationDate.setHours(9, 0, 0, 0);
+  return notificationDate;
+}
+
+async function showPaymentNotification(item, nextDue) {
+  const notificationKey = `${item.id}:${toISODate(nextDue)}`;
+  if (notifiedState[notificationKey]) return;
+
+  const title = `${item.name} 내일 결제`;
+  const body = `${formatMoney(item.amount, item.currency)} · ${formatDisplayDate(nextDue)}`;
+
+  try {
+    const registration = await navigator.serviceWorker?.getRegistration?.();
+    if (registration?.showNotification) {
+      await registration.showNotification(title, {
+        body,
+        icon: "/icon.svg",
+        badge: "/icon.svg",
+        tag: notificationKey,
+      });
+    } else {
+      new Notification(title, { body, icon: "/icon.svg", tag: notificationKey });
+    }
+    notifiedState[notificationKey] = true;
+    saveNotifiedState();
+  } catch {
+    showToast("알림을 보내지 못했어");
+  }
+}
+
 function handleAuditClick(event) {
   const checkbox = event.target.closest("input[data-audit-id]");
   if (checkbox) {
@@ -533,7 +794,43 @@ function handleAuditClick(event) {
 }
 
 function sortedSubscriptions() {
-  return [...subscriptions].sort((a, b) => getNextDueDate(a) - getNextDueDate(b));
+  const statusOrder = { active: 0, paused: 1, canceled: 2 };
+  return [...subscriptions].sort((a, b) => {
+    const statusDiff = (statusOrder[a.status] ?? 0) - (statusOrder[b.status] ?? 0);
+    if (statusDiff) return statusDiff;
+    return getNextDueDate(a) - getNextDueDate(b);
+  });
+}
+
+function loadSettings() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    const paymentMethods = cleanList(stored.paymentMethods, defaultPaymentMethods);
+    const categories = cleanList(stored.categories, defaultCategories);
+    return {
+      paymentMethods,
+      categories,
+      notificationsEnabled: Boolean(stored.notificationsEnabled),
+      theme: stored.theme === "dark" ? "dark" : "light",
+    };
+  } catch {
+    return {
+      paymentMethods: [...defaultPaymentMethods],
+      categories: [...defaultCategories],
+      notificationsEnabled: false,
+      theme: "light",
+    };
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function cleanList(values, fallback) {
+  const rows = Array.isArray(values) ? values : fallback;
+  const cleaned = rows.map((value) => String(value || "").trim()).filter(Boolean);
+  return [...new Set(cleaned.length ? cleaned : fallback)];
 }
 
 function loadSubscriptions() {
@@ -563,6 +860,24 @@ function saveAuditState() {
   localStorage.setItem(AUDIT_KEY, JSON.stringify(auditState));
 }
 
+function loadNotifiedState() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(NOTIFIED_KEY) || "{}");
+    return stored && typeof stored === "object" ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveNotifiedState() {
+  localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notifiedState));
+}
+
+function normalizeSavedSubscriptions() {
+  subscriptions = subscriptions.map(normalizeSubscription).filter(Boolean);
+  saveSubscriptions();
+}
+
 function normalizeSubscription(item) {
   if (!item || !item.name) return null;
   return {
@@ -572,19 +887,27 @@ function normalizeSubscription(item) {
     currency: currencyOrder.includes(item.currency) ? item.currency : "KRW",
     cycle: cycleLabels[item.cycle] ? item.cycle : "monthly",
     nextDate: isISODate(item.nextDate) ? item.nextDate : toISODate(new Date()),
-    category: String(item.category || "기타").trim() || "기타",
+    category: normalizeCategory(item.category),
     paymentMethod: normalizePaymentMethod(item.paymentMethod),
-    status: item.status === "paused" ? "paused" : "active",
+    status: statusLabels[item.status] ? item.status : "active",
     notes: String(item.notes || "").trim(),
   };
 }
 
 function normalizePaymentMethod(value) {
   const method = String(value || "").trim();
-  if (paymentMethods.includes(method)) return method;
+  const methods = settings?.paymentMethods?.length ? settings.paymentMethods : defaultPaymentMethods;
+  if (methods.includes(method)) return method;
   if (method.includes("앱스토어") || method.includes("App Store")) return "앱스토어";
   if (method.includes("휴대폰") || method.includes("통신")) return "휴대폰";
-  return "카드결제";
+  return methods[0] || "카드결제";
+}
+
+function normalizeCategory(value) {
+  const category = String(value || "").trim();
+  const categories = settings?.categories?.length ? settings.categories : defaultCategories;
+  if (categories.includes(category)) return category;
+  return categories[0] || "기타";
 }
 
 function exportData() {

@@ -26,6 +26,22 @@
   --display-font: "D-DIN", Pretendard, Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #2f3030;
+  --surface: #363737;
+  --surface-strong: #404141;
+  --surface-soft: #404141;
+  --text: #eeeeea;
+  --muted: #aaa9a3;
+  --line: rgba(238, 238, 234, 0.25);
+  --line-soft: rgba(238, 238, 234, 0.13);
+  --button: #eeeeea;
+  --button-text: #303133;
+  --coral: #ff8a76;
+  --amber: #ffb348;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -556,6 +572,11 @@ textarea:focus {
   color: var(--muted);
 }
 
+.status-badge.canceled {
+  background: rgba(200, 85, 61, 0.12);
+  color: var(--coral);
+}
+
 .row-actions {
   display: flex;
   justify-content: space-between;
@@ -838,6 +859,111 @@ textarea:focus {
   gap: 16px;
 }
 
+.settings-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-section {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settings-section h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.switch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 12px;
+}
+
+.switch-row > span {
+  display: grid;
+  gap: 3px;
+}
+
+.switch-row strong {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.switch-row small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.switch-row input {
+  width: 52px;
+  min-height: 30px;
+  accent-color: var(--accent);
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.segmented-control button {
+  min-height: 38px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.segmented-control button.active {
+  border-color: var(--button);
+  background: var(--button);
+  color: var(--button-text);
+}
+
+.settings-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 70px;
+  gap: 8px;
+}
+
+.settings-list {
+  display: grid;
+  border-top: 1px solid var(--line-soft);
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.settings-row span {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @keyframes sheetUp {
   from {
     opacity: 0;
@@ -938,8 +1064,8 @@ textarea:focus {
   }
 
   .app-header {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: flex-start;
+    flex-direction: row;
   }
 
   .header-actions,
