@@ -156,6 +156,7 @@ function init() {
 
 function bindEvents() {
   els.form.addEventListener("submit", handleSubmit);
+  bindFoldAnimations();
   els.openForm.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -178,6 +179,87 @@ function bindEvents() {
     if (action === "advance") advanceSubscription(id);
     if (action === "delete") deleteSubscription(id);
   });
+}
+
+function bindFoldAnimations() {
+  const panels = document.querySelectorAll("details.fold-panel, details.audit-panel");
+  panels.forEach((panel) => {
+    const summary = panel.querySelector("summary");
+    if (!summary) return;
+
+    summary.addEventListener("click", (event) => {
+      event.preventDefault();
+      toggleFoldPanel(panel);
+    });
+  });
+}
+
+function toggleFoldPanel(panel) {
+  if (panel.dataset.animating === "true") return;
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    panel.open = !panel.open;
+    return;
+  }
+
+  if (typeof panel.animate !== "function") {
+    panel.open = !panel.open;
+    return;
+  }
+
+  if (panel.open) {
+    collapseFoldPanel(panel);
+  } else {
+    expandFoldPanel(panel);
+  }
+}
+
+function expandFoldPanel(panel) {
+  panel.dataset.animating = "true";
+  const startHeight = `${panel.offsetHeight}px`;
+  panel.open = true;
+  const endHeight = `${panel.scrollHeight}px`;
+
+  panel.style.height = startHeight;
+  panel.style.overflow = "hidden";
+
+  requestAnimationFrame(() => {
+    const animation = panel.animate({ height: [startHeight, endHeight] }, foldTiming());
+    animation.onfinish = () => cleanupFoldPanel(panel);
+    animation.oncancel = () => cleanupFoldPanel(panel);
+  });
+}
+
+function collapseFoldPanel(panel) {
+  panel.dataset.animating = "true";
+  const summary = panel.querySelector("summary");
+  const startHeight = `${panel.offsetHeight}px`;
+  const endHeight = `${summary ? summary.offsetHeight : 0}px`;
+
+  panel.style.height = startHeight;
+  panel.style.overflow = "hidden";
+
+  requestAnimationFrame(() => {
+    const animation = panel.animate({ height: [startHeight, endHeight] }, foldTiming());
+    animation.onfinish = () => {
+      panel.open = false;
+      cleanupFoldPanel(panel);
+    };
+    animation.oncancel = () => cleanupFoldPanel(panel);
+  });
+}
+
+function cleanupFoldPanel(panel) {
+  panel.style.height = "";
+  panel.style.overflow = "";
+  panel.dataset.animating = "false";
+}
+
+function foldTiming() {
+  return {
+    duration: 210,
+    easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+  };
 }
 
 function handleSubmit(event) {
@@ -324,7 +406,10 @@ function renderSubscriptionCards() {
     row.innerHTML = `
       <div class="subscription-card-top">
         <span class="category-chip" title="${escapeHtml(item.category)}">${escapeHtml(item.category || "기타")}</span>
-        <span class="status-badge ${item.status}">${item.status === "active" ? "활성" : "보류"}</span>
+        <span class="card-badges">
+          <span class="status-badge ${item.status}">${item.status === "active" ? "활성" : "보류"}</span>
+          <span class="${dDayClass(dday)}">${dDayLabel(dday)}</span>
+        </span>
       </div>
       <div class="subscription-card-main">
         <div class="service-cell">
@@ -343,7 +428,7 @@ function renderSubscriptionCards() {
         </div>
         <div>
           <dt>다음 결제</dt>
-          <dd><span>${formatDisplayDate(nextDue)}</span><span class="${dDayClass(dday)}">${dDayLabel(dday)}</span></dd>
+          <dd><span>${formatDisplayDate(nextDue)}</span></dd>
         </div>
       </dl>
       <div class="row-actions">
