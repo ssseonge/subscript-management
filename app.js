@@ -123,6 +123,7 @@ let notificationTimers = [];
 let remoteReady = false;
 let remoteSaveTimer = null;
 let remoteLoadPromise = null;
+let lockedScrollY = 0;
 
 const els = {
   form: document.querySelector("#subscriptionForm"),
@@ -205,8 +206,10 @@ function bindEvents() {
   els.settingsDialog.addEventListener("click", (event) => {
     if (event.target === els.settingsDialog) closeSettingsDialog();
   });
-  els.formDialog.addEventListener("cancel", () => resetForm());
-  els.settingsDialog.addEventListener("cancel", closeSettingsDialog);
+  els.formDialog.addEventListener("cancel", () => window.setTimeout(resetForm, 0));
+  els.formDialog.addEventListener("close", unlockPageScrollIfNoDialogs);
+  els.settingsDialog.addEventListener("cancel", () => window.setTimeout(unlockPageScrollIfNoDialogs, 0));
+  els.settingsDialog.addEventListener("close", unlockPageScrollIfNoDialogs);
   els.notificationToggle.addEventListener("change", handleNotificationToggle);
   els.serviceNameForm.addEventListener("submit", (event) => handleSettingAdd(event, "serviceNames"));
   els.paymentMethodForm.addEventListener("submit", (event) => handleSettingAdd(event, "paymentMethods"));
@@ -373,6 +376,8 @@ function closeSettingsDialog() {
 }
 
 function openDialog(dialog = els.formDialog) {
+  lockPageScroll();
+
   if (typeof dialog.showModal === "function") {
     dialog.showModal();
   } else {
@@ -380,6 +385,23 @@ function openDialog(dialog = els.formDialog) {
     dialog.classList.add("open");
   }
 
+}
+
+function lockPageScroll() {
+  if (document.body.classList.contains("scroll-locked")) return;
+
+  lockedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  document.body.classList.add("scroll-locked");
+  document.body.style.top = `-${lockedScrollY}px`;
+}
+
+function unlockPageScrollIfNoDialogs() {
+  if (els.formDialog.open || els.settingsDialog.open) return;
+  if (!document.body.classList.contains("scroll-locked")) return;
+
+  document.body.classList.remove("scroll-locked");
+  document.body.style.top = "";
+  window.scrollTo(0, lockedScrollY);
 }
 
 function editSubscription(id) {
