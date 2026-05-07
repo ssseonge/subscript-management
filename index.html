@@ -164,15 +164,11 @@
 
           <label>
             <span>결제수단</span>
-            <input id="paymentMethod" name="paymentMethod" type="text" list="paymentOptions" placeholder="현대카드" />
-            <datalist id="paymentOptions">
-              <option value="현대카드"></option>
-              <option value="삼성카드"></option>
-              <option value="카카오페이"></option>
-              <option value="네이버페이"></option>
-              <option value="체크카드"></option>
-              <option value="법인카드"></option>
-            </datalist>
+            <select id="paymentMethod" name="paymentMethod">
+              <option value="카드결제">카드결제</option>
+              <option value="앱스토어">앱스토어</option>
+              <option value="휴대폰">휴대폰</option>
+            </select>
           </label>
 
           <label>

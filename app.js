@@ -16,6 +16,7 @@ const cycleMonths = {
 };
 
 const currencyOrder = ["KRW", "JPY", "USD", "EUR"];
+const paymentMethods = ["카드결제", "앱스토어", "휴대폰"];
 
 const auditSources = [
   {
@@ -77,7 +78,7 @@ const demoSubscriptions = [
     cycle: "monthly",
     nextDate: "2026-05-20",
     category: "AI/업무",
-    paymentMethod: "카드",
+    paymentMethod: "카드결제",
     status: "active",
     notes: "업무 리서치와 웹앱 제작",
   },
@@ -89,7 +90,7 @@ const demoSubscriptions = [
     cycle: "monthly",
     nextDate: "2026-05-15",
     category: "영상/편집",
-    paymentMethod: "카드",
+    paymentMethod: "카드결제",
     status: "active",
     notes: "숏폼 편집",
   },
@@ -101,7 +102,7 @@ const demoSubscriptions = [
     cycle: "monthly",
     nextDate: "2026-05-27",
     category: "영상/편집",
-    paymentMethod: "카드",
+    paymentMethod: "카드결제",
     status: "active",
     notes: "브류 자막/영상 편집",
   },
@@ -273,7 +274,7 @@ function handleSubmit(event) {
     cycle: els.cycle.value,
     nextDate: els.nextDate.value,
     category: els.category.value.trim() || "기타",
-    paymentMethod: els.paymentMethod.value.trim(),
+    paymentMethod: normalizePaymentMethod(els.paymentMethod.value),
     status: els.status.value,
     notes: els.notes.value.trim(),
   };
@@ -572,10 +573,18 @@ function normalizeSubscription(item) {
     cycle: cycleLabels[item.cycle] ? item.cycle : "monthly",
     nextDate: isISODate(item.nextDate) ? item.nextDate : toISODate(new Date()),
     category: String(item.category || "기타").trim() || "기타",
-    paymentMethod: String(item.paymentMethod || "").trim(),
+    paymentMethod: normalizePaymentMethod(item.paymentMethod),
     status: item.status === "paused" ? "paused" : "active",
     notes: String(item.notes || "").trim(),
   };
+}
+
+function normalizePaymentMethod(value) {
+  const method = String(value || "").trim();
+  if (paymentMethods.includes(method)) return method;
+  if (method.includes("앱스토어") || method.includes("App Store")) return "앱스토어";
+  if (method.includes("휴대폰") || method.includes("통신")) return "휴대폰";
+  return "카드결제";
 }
 
 function exportData() {
