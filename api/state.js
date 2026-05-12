@@ -45,6 +45,7 @@ function toClientSubscription(row) {
     name: row.name,
     amount: Number(row.amount) || 0,
     currency: row.currency,
+    actualKrwAmount: row.actual_krw_amount === null ? null : Number(row.actual_krw_amount) || null,
     cycle: row.cycle,
     nextDate: row.next_date,
     category: row.category,
@@ -60,6 +61,7 @@ function toDbSubscription(item) {
     name: String(item.name || "").trim(),
     amount: Number(item.amount) || 0,
     currency: item.currency || "KRW",
+    actual_krw_amount: normalizeOptionalAmount(item.actualKrwAmount),
     cycle: item.cycle || "monthly",
     next_date: item.nextDate,
     category: String(item.category || "기타").trim(),
@@ -67,6 +69,12 @@ function toDbSubscription(item) {
     status: item.status || "active",
     updated_at: new Date().toISOString(),
   };
+}
+
+function normalizeOptionalAmount(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
 
 function toClientSettings(row) {

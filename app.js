@@ -3,6 +3,7 @@ const AUDIT_KEY = "insung-subscription-audit-v1";
 const SETTINGS_KEY = "insung-subscription-settings-v1";
 const NOTIFIED_KEY = "insung-subscription-notified-v1";
 const REMOTE_STATE_URL = "/api/state";
+const EXCHANGE_RATES_URL = location.protocol === "file:" ? "https://subscript-management.vercel.app/api/exchange-rates" : "/api/exchange-rates";
 
 const cycleLabels = {
   weekly: "매주",
@@ -124,6 +125,12 @@ let remoteReady = false;
 let remoteSaveTimer = null;
 let remoteLoadPromise = null;
 let lockedScrollY = 0;
+let exchangeRates = {
+  rates: { KRW: 1 },
+  date: "",
+  source: "",
+  loaded: false,
+};
 
 const els = {
   form: document.querySelector("#subscriptionForm"),
@@ -133,6 +140,7 @@ const els = {
   serviceName: document.querySelector("#serviceName"),
   amount: document.querySelector("#amount"),
   currency: document.querySelector("#currency"),
+  actualKrwAmount: document.querySelector("#actualKrwAmount"),
   cycle: document.querySelector("#cycle"),
   nextDate: document.querySelector("#nextDate"),
   category: document.querySelector("#category"),
@@ -186,6 +194,7 @@ function init() {
   updateNotificationStatus();
   schedulePaymentNotifications();
   remoteLoadPromise = loadRemoteState();
+  loadExchangeRates();
 }
 
 function bindEvents() {
@@ -323,11 +332,18 @@ function handleSubmit(event) {
   const serviceName = els.serviceName.value.trim() || settings.serviceNames[0] || "ChatGPT";
   const category = els.category.value.trim() || settings.categories[0] || "기타";
   const paymentMethod = els.paymentMethod.value.trim() || settings.paymentMethods[0] || "카드결제";
+  const actualKrwAmount = normalizeOptionalAmount(els.actualKrwAmount.value);
+  if (els.actualKrwAmount.value.trim() && actualKrwAmount === null) {
+    showToast("원화금액을 확인해줘");
+    return;
+  }
+
   const data = {
     id: els.editingId.value || createId(),
     name: serviceName,
     amount: Number(els.amount.value),
     currency: els.currency.value,
+    actualKrwAmount,
     cycle: els.cycle.value,
     nextDate: els.nextDate.value,
     category,
@@ -412,6 +428,7 @@ function editSubscription(id) {
   els.serviceName.value = item.name;
   els.amount.value = item.amount;
   els.currency.value = item.currency;
+  els.actualKrwAmount.value = item.actualKrwAmount ?? "";
   els.cycle.value = item.cycle;
   els.nextDate.value = item.nextDate;
   renderFormOptions(item.name, item.category, item.paymentMethod);
@@ -470,13 +487,18 @@ function renderSummary() {
   const active = subscriptions.filter((item) => item.status === "active");
   const monthlyTotals = sumByCurrency(active, (item) => monthlyAmount(item));
   const yearlyTotals = sumByCurrency(active, (item) => monthlyAmount(item) * 12);
+  const monthlyKrwTotal = sumKrw(active, (item) => monthlyKrwAmount(item));
+  const yearlyKrwTotal = sumKrw(active, (item) => {
+    const amount = monthlyKrwAmount(item);
+    return Number.isFinite(amount) ? amount * 12 : null;
+  });
   const dueSoon = active.filter((item) => {
     const days = daysUntil(getNextDueDate(item));
     return days >= 0 && days <= 7;
   });
 
-  els.monthlyTotal.innerHTML = totalsMarkup(monthlyTotals);
-  els.yearlyTotal.innerHTML = totalsMarkup(yearlyTotals);
+  els.monthlyTotal.innerHTML = krwTotalMarkup(monthlyKrwTotal, monthlyTotals);
+  els.yearlyTotal.innerHTML = krwTotalMarkup(yearlyKrwTotal, yearlyTotals);
   els.dueSoonCount.textContent = `${dueSoon.length}건`;
   els.activeCount.textContent = `${active.length}개`;
 }
@@ -508,7 +530,7 @@ function renderSubscriptionCards() {
         </div>
         <div class="subscription-amount">
           <span class="amount-main">${formatMoney(item.amount, item.currency)}</span>
-          <span class="amount-sub">월 ${formatMoney(monthlyAmount(item), item.currency)}</span>
+          <span class="amount-sub">${escapeHtml(cardKrwLabel(item))}</span>
         </div>
       </div>
       <dl class="subscription-details">
@@ -572,7 +594,7 @@ function renderUpcoming() {
         <strong>${escapeHtml(item.name)}</strong>
         <span>${formatDisplayDate(nextDue)} · ${escapeHtml(item.paymentMethod || "결제수단 미지정")}</span>
       </div>
-      <div class="timeline-amount">${formatMoney(item.amount, item.currency)}</div>
+      <div class="timeline-amount">${escapeHtml(paymentKrwLabel(item))}</div>
     `;
     fragment.append(row);
   });
@@ -967,6 +989,44 @@ async function loadRemoteState() {
   }
 }
 
+async function loadExchangeRates() {
+  try {
+    const response = await fetch(EXCHANGE_RATES_URL, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`Exchange rate load failed: ${response.status}`);
+
+    const payload = await response.json();
+    const rates = payload && typeof payload.rates === "object" ? payload.rates : {};
+    exchangeRates = {
+      rates: {
+        KRW: 1,
+        USD: normalizeRate(rates.USD),
+        JPY: normalizeRate(rates.JPY),
+        EUR: normalizeRate(rates.EUR),
+      },
+      date: typeof payload.date === "string" ? payload.date : "",
+      source: typeof payload.source === "string" ? payload.source : "",
+      loaded: true,
+    };
+
+    renderSummary();
+    renderSubscriptionCards();
+    renderUpcoming();
+  } catch {
+    exchangeRates = {
+      rates: { KRW: 1 },
+      date: "",
+      source: "",
+      loaded: false,
+    };
+    renderSummary();
+  }
+}
+
+function normalizeRate(value) {
+  const rate = Number(value);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
 function normalizeRemoteSettings(remoteSettings) {
   if (!remoteSettings || typeof remoteSettings !== "object") return null;
   return {
@@ -1010,6 +1070,7 @@ function toRemoteSubscription(item) {
     name: String(item.name || "").trim(),
     amount: Number(item.amount) || 0,
     currency: item.currency,
+    actualKrwAmount: normalizeOptionalAmount(item.actualKrwAmount),
     cycle: item.cycle,
     nextDate: item.nextDate,
     category: String(item.category || "").trim(),
@@ -1035,12 +1096,20 @@ function normalizeSubscription(item) {
     name: String(item.name || "").trim(),
     amount: Number(item.amount) || 0,
     currency: currencyOrder.includes(item.currency) ? item.currency : "KRW",
+    actualKrwAmount: normalizeOptionalAmount(item.actualKrwAmount),
     cycle: cycleLabels[item.cycle] ? item.cycle : "monthly",
     nextDate: isISODate(item.nextDate) ? item.nextDate : toISODate(new Date()),
     category: normalizeCategory(item.category),
     paymentMethod: normalizePaymentMethod(item.paymentMethod),
     status: statusLabels[item.status] ? item.status : "active",
   };
+}
+
+function normalizeOptionalAmount(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return null;
+  return amount >= 0 ? amount : null;
 }
 
 function normalizePaymentMethod(value) {
@@ -1130,21 +1199,67 @@ function sumByCurrency(items, amountFn) {
   }, {});
 }
 
-function totalsMarkup(totals) {
-  const currencies = Object.keys(totals).sort((a, b) => currencyOrder.indexOf(a) - currencyOrder.indexOf(b));
-  if (!currencies.length) return "0원";
+function sumKrw(items, amountFn) {
+  return items.reduce((total, item) => {
+    const amount = amountFn(item);
+    return Number.isFinite(amount) ? total + amount : total;
+  }, 0);
+}
 
-  return currencies
-    .map((currency, index) => {
-      const value = formatMoney(totals[currency], currency);
-      return index === 0 ? value : `<small>${value}</small>`;
-    })
-    .join("");
+function krwTotalMarkup(krwTotal, originalTotals) {
+  const detail = totalDetailLabel(originalTotals);
+  return `${formatMoney(krwTotal, "KRW")}${detail ? `<small>${escapeHtml(detail)}</small>` : ""}`;
+}
+
+function totalDetailLabel(totals) {
+  const currencies = Object.keys(totals).sort((a, b) => currencyOrder.indexOf(a) - currencyOrder.indexOf(b));
+  const foreign = currencies.filter((currency) => currency !== "KRW" && totals[currency] > 0);
+  const parts = foreign.map((currency) => formatMoney(totals[currency], currency));
+  const rateDate = exchangeRates.loaded && exchangeRates.date ? `${formatRateDate(exchangeRates.date)} 환율` : "";
+
+  if (parts.length && rateDate) return `${parts.join(" · ")} 포함 · ${rateDate}`;
+  if (parts.length) return `${parts.join(" · ")} 포함 · 환율 대기`;
+  return "원화 기준";
 }
 
 function monthlyAmount(item) {
   const multiplier = cycleMonths[item.cycle] || 1;
   return item.amount * multiplier;
+}
+
+function monthlyKrwAmount(item) {
+  const amount = krwCycleAmount(item);
+  if (!Number.isFinite(amount)) return null;
+  return amount * (cycleMonths[item.cycle] || 1);
+}
+
+function krwCycleAmount(item) {
+  if (hasActualKrwAmount(item)) return item.actualKrwAmount;
+  return convertToKrw(item.amount, item.currency);
+}
+
+function convertToKrw(amount, currency) {
+  if (currency === "KRW") return amount;
+  const rate = exchangeRates.rates[currency];
+  if (!Number.isFinite(rate)) return null;
+  return amount * rate;
+}
+
+function hasActualKrwAmount(item) {
+  return item.actualKrwAmount !== null && Number.isFinite(item.actualKrwAmount) && item.actualKrwAmount >= 0;
+}
+
+function cardKrwLabel(item) {
+  const monthlyKrw = monthlyKrwAmount(item);
+  if (!Number.isFinite(monthlyKrw)) return `월 ${formatMoney(monthlyAmount(item), item.currency)}`;
+  const suffix = hasActualKrwAmount(item) ? " 실결제" : "";
+  return `월 ${formatMoney(monthlyKrw, "KRW")}${suffix}`;
+}
+
+function paymentKrwLabel(item) {
+  const krwAmount = krwCycleAmount(item);
+  if (!Number.isFinite(krwAmount)) return formatMoney(item.amount, item.currency);
+  return formatMoney(krwAmount, "KRW");
 }
 
 function getNextDueDate(item) {
@@ -1221,6 +1336,14 @@ function formatMoney(amount, currency) {
     currency,
     maximumFractionDigits: zeroDecimal ? 0 : 2,
   }).format(amount);
+}
+
+function formatRateDate(value) {
+  if (!isISODate(value)) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+  }).format(parseLocalDate(value));
 }
 
 function dDayLabel(days) {

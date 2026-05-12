@@ -4,6 +4,7 @@ create table if not exists public.subscription_services (
   name text not null,
   amount numeric(12, 2) not null check (amount >= 0),
   currency text not null default 'KRW' check (currency in ('KRW', 'JPY', 'USD', 'EUR')),
+  actual_krw_amount numeric(12, 0) check (actual_krw_amount is null or actual_krw_amount >= 0),
   cycle text not null default 'monthly' check (cycle in ('weekly', 'monthly', 'quarterly', 'yearly')),
   next_date date not null,
   category text not null default '기타',
@@ -14,6 +15,9 @@ create table if not exists public.subscription_services (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.subscription_services
+  add column if not exists actual_krw_amount numeric(12, 0) check (actual_krw_amount is null or actual_krw_amount >= 0);
 
 create table if not exists public.subscription_app_settings (
   owner_id text primary key default 'default',
